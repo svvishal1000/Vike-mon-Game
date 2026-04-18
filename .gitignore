@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Media files (important for your project)
+*.mp4
+*.mp3
+*.wav
+
+# Python environments
+env/
+venv/
+
+# OS junk
+.DS_Store
+Thumbs.db
