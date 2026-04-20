@@ -3,8 +3,8 @@ import math
 import pygame
 import sys
 
-
-from settings import WIDTH, HEIGHT, WHITE, HIGHLIGHT_COLOR
+from settings import WIDTH, HEIGHT, WHITE, BLACK, BOX_COLOR
+from utils.helpers import load_sprite
 
 def play_intro_video(screen, game_surface, pygame_mixer, clock):
     cap = cv2.VideoCapture("intro.mp4")
@@ -37,20 +37,10 @@ def play_intro_video(screen, game_surface, pygame_mixer, clock):
         game_surface.blit(pygame_frame, (0, 0))
 
         screen_width, screen_height = screen.get_size()
-        scale_x = screen_width / WIDTH
-        scale_y = screen_height / HEIGHT
-        scale_factor = min(scale_x, scale_y)
 
-        scaled_width = int(WIDTH * scale_factor)
-        scaled_height = int(HEIGHT * scale_factor)
+        scaled_surface = pygame.transform.scale(game_surface, (screen_width, screen_height))
 
-        scaled_surface = pygame.transform.scale(game_surface, (scaled_width, scaled_height))
-
-        x_offset = (screen_width - scaled_width) // 2
-        y_offset = (screen_height - scaled_height) // 2
-
-        screen.fill((0, 0, 0))
-        screen.blit(scaled_surface, (x_offset, y_offset))
+        screen.blit(scaled_surface, (0, 0))
         pygame.display.update()
 
         for event in pygame.event.get():
@@ -69,6 +59,103 @@ def play_intro_video(screen, game_surface, pygame_mixer, clock):
 
     cap.release()
     pygame_mixer.music.stop()
+
+def play_welcome_video(screen, game_surface, font):
+    cap = cv2.VideoCapture("welcome.mp4")
+
+    if not cap.isOpened():
+        print("Error: Could not open welcome.mp4")
+        return
+
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    if fps <= 0:
+        fps = 30
+
+    frame_delay = int(1000 / fps)
+
+    last_frame_surface = None
+
+    # First: play the video once
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        frame = cv2.resize(frame, (WIDTH, HEIGHT))
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        pygame_frame = pygame.surfarray.make_surface(frame.swapaxes(0, 1))
+        last_frame_surface = pygame_frame.copy()
+
+        game_surface.blit(pygame_frame, (0, 0))
+
+        screen_width, screen_height = screen.get_size()
+
+        scaled_surface = pygame.transform.scale(game_surface, (screen_width, screen_height))
+
+        screen.blit(scaled_surface, (0, 0))
+        pygame.display.update()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                cap.release()
+                pygame.quit()
+                sys.exit()
+
+        pygame.time.wait(frame_delay)
+
+    cap.release()
+
+    if last_frame_surface is None:
+        return
+
+    # Then: hold last frame and show dialogue box until Enter
+    full_text = "Welcome to Vike'Mon World!"
+    displayed_length = 0
+    text_timer = 0
+    arrow_timer = 0
+
+    while True:
+        arrow_timer += 1
+        text_timer += 1
+
+        if displayed_length < len(full_text) and text_timer % 3 == 0:
+            displayed_length += 1
+
+        current_text = full_text[:displayed_length]
+
+        game_surface.blit(last_frame_surface, (0, 0))
+
+        # Dialogue box drawn directly on screen (not game_surface)
+        pygame.draw.rect(screen, BOX_COLOR, (40, 430, 720, 130))
+        pygame.draw.rect(screen, BLACK, (40, 430, 720, 130), 2)
+
+        dialogue_text = font.render(current_text, True, BLACK)
+        screen.blit(dialogue_text, (70, 465))
+
+        # Arrow appears only after full text
+        if displayed_length == len(full_text):
+            if (arrow_timer // 20) % 2 == 0:
+                arrow_text = font.render("v", True, BLACK)
+                screen.blit(arrow_text, (720, 505))
+
+            screen_width, screen_height = screen.get_size()
+
+            scaled_surface = pygame.transform.scale(game_surface, (screen_width, screen_height))
+
+            screen.blit(scaled_surface, (0, 0))
+            pygame.display.update()
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RETURN:
+                        return
+
+            pygame.time.delay(30)
 
 
 def play_title_menu(
@@ -161,8 +248,8 @@ def play_title_menu(
                 draw_x = menu_x
                 draw_y = y - (scaled_option.get_height() - option_surface.get_height()) // 2
 
-                arrow = font.render("▶", True, HIGHLIGHT_COLOR)
-                game_surface.blit(arrow, (menu_x - 40, y))
+                arrow_icon = load_sprite("arrow.png", 24, 24)
+                game_surface.blit(arrow_icon, (menu_x - 40, y + 5))
                 game_surface.blit(scaled_option, (draw_x, draw_y))
             else:
                 color = (200, 200, 200)

@@ -5,8 +5,9 @@ import random
 from settings import *
 from utils.helpers import load_sprite, get_bounce_offset
 from models.creature import Creature
-from systems.battle import draw_battle_screen, enemy_turn
-from video_menu import play_intro_video, play_title_menu
+from models.move import Move
+from systems.battle import draw_battle_screen, enemy_turn, calculate_move_damage
+from video_menu import play_intro_video, play_title_menu, play_welcome_video
 from systems.overworld import (
     can_move_to,
     player_is_in_tall_grass,
@@ -100,13 +101,53 @@ player_speed = 5
 walk_timer = 0
 is_moving = False
 
+pyroo_moves = [
+    Move("Scratch", 2, "normal", "none"),
+    Move("Ember", 4, "fire", "flamethrower"),
+    Move("Fire Fang", 5, "fire", "flamethrower"),
+    Move("Flame Burst", 6, "fire", "flamethrower"),
+]
 
+flamix_moves = [
+    Move("Tackle", 2, "normal", "none"),
+    Move("Spark Ember", 4, "fire", "flamethrower"),
+    Move("Flare Kick", 5, "fire", "flamethrower"),
+    Move("Inferno", 7, "fire", "flamethrower"),
+]
+
+aquaff_moves = [
+    Move("Splash Hit", 2, "water", "none"),
+    Move("Bubble Shot", 4, "water", "none"),
+    Move("Water Pulse", 5, "water", "none"),
+    Move("Aqua Crash", 6, "water", "none"),
+]
+
+leafling_moves = [
+    Move("Leaf Tap", 2, "grass", "none"),
+    Move("Vine Whip", 4, "grass", "none"),
+    Move("Razor Leaf", 5, "grass", "none"),
+    Move("Nature Burst", 6, "grass", "none"),
+]
+
+spriglet_moves = [
+    Move("Seed Hit", 2, "grass", "none"),
+    Move("Leaf Blade", 4, "grass", "none"),
+    Move("Vine Lash", 5, "grass", "none"),
+    Move("Bloom Strike", 6, "grass", "none"),
+]
+
+sparkit_moves = [
+    Move("Quick Jab", 2, "normal", "none"),
+    Move("Spark", 4, "electric", "thunderbolt"),
+    Move("Thunder Jolt", 5, "electric", "thunderbolt"),
+    Move("Thunderbolt", 7, "electric", "thunderbolt"),
+]
 
 # Starter choices
 starter_choices = [
-    Creature("Pyroo", 30, 4, 8, "pyroo.png"),
-    Creature("Aquaff", 32, 3, 7, "aquaff.png"),
-    Creature("Spriglet", 28, 5, 9, "spriglet.png")
+    Creature("Pyroo", "fire", 30, 4, 8, "pyroo.png", pyroo_moves),
+    Creature("Aquaff", "water", 32, 3, 7, "aquaff.png", aquaff_moves),
+    Creature("Spriglet", "grass", 28, 5, 9, "spriglet.png", spriglet_moves),
 ]
 
 selected_starter_index = 0
@@ -114,10 +155,10 @@ player_creature = None
 
 # Wild creature choices
 wild_creature_templates = [
-    Creature("Leafling", 20, 3, 6, "leafling.png"),
-    Creature("Aquaff", 22, 2, 5, "aquaff.png"),
-    Creature("Sparkit", 18, 4, 7, "sparkit.png"),
-    Creature("Flamix", 26, 5, 9, "flamix.png")
+    Creature("Leafling", "grass", 20, 3, 6, "leafling.png", leafling_moves),
+    Creature("Aquaff", "water", 22, 2, 5, "aquaff.png", aquaff_moves),
+    Creature("Sparkit", "electric", 18, 4, 7, "sparkit.png", sparkit_moves),
+    Creature("Flamix", "fire", 26, 5, 9, "flamix.png", flamix_moves),
 ]
 
 enemy_creature = None
@@ -137,13 +178,24 @@ attack_timer = 0
 move_effect = None
 move_effect_timer = 0
 
+# Battle UI state
+battle_phase = "message"
+battle_messages = []
+battle_after_messages = "action_menu"
+
+battle_menu_options = ["Attack", "Open Bag", "Throw a Rock", "Run"]
+battle_menu_index = 0
+move_menu_index = 0
+
 def clone_creature(creature):
     return Creature(
         creature.name,
+        creature.creature_type,
         creature.max_hp,
         creature.attack_min,
         creature.attack_max,
-        creature.image_file
+        creature.image_file,
+        creature.moves
     )
 
 def create_wild_creature():
@@ -154,11 +206,79 @@ def create_wild_creature():
 def start_battle():
     """Start a new battle with a random wild creature."""
     global game_state, enemy_creature, battle_message, battle_result_timer
+    global battle_menu_index, move_menu_index
 
     enemy_creature = create_wild_creature()
     game_state = "battle"
-    battle_message = f"A wild {enemy_creature.name} appeared!"
     battle_result_timer = 0
+
+    battle_menu_index = 0
+    move_menu_index = 0
+
+    set_battle_messages(
+        [
+            f"A wild {enemy_creature.name} appeared!",
+            f"Go {player_creature.name}!",
+        ],
+        "action_menu"
+    )
+
+def set_battle_messages(messages, after_phase="action_menu"):
+    global battle_phase, battle_messages, battle_after_messages
+    battle_phase = "message"
+    battle_messages = list(messages)
+    battle_after_messages = after_phase
+
+
+def run_enemy_turn_sequence():
+    global battle_message, game_state, battle_result_timer
+    global hit_target, hit_timer, attack_attacker, attack_timer
+    global move_effect, move_effect_timer
+
+    result = enemy_turn(
+        enemy_creature,
+        player_creature,
+        battle_result_timer,
+    )
+
+    hit_target = result["hit_target"]
+    hit_timer = result["hit_timer"]
+    attack_attacker = result["attack_attacker"]
+    attack_timer = result["attack_timer"]
+    move_effect = result["move_effect"]
+    move_effect_timer = result["move_effect_timer"]
+
+    enemy_messages = [result["battle_message"]]
+
+    if result["game_state"] == "battle_end":
+        game_state = "battle_end"
+        battle_result_timer = result["battle_result_timer"]
+        battle_message = result["battle_message"]
+    else:
+        set_battle_messages(enemy_messages, "action_menu")
+
+
+def advance_battle_messages():
+    global battle_phase, battle_messages, battle_after_messages
+    global game_state, battle_result_timer, battle_message
+
+    if battle_messages:
+        battle_messages.pop(0)
+
+    if battle_messages:
+        return
+
+    if battle_after_messages == "enemy_turn":
+        run_enemy_turn_sequence()
+    elif battle_after_messages == "end_win":
+        battle_message = "You won the battle!"
+        game_state = "battle_end"
+        battle_result_timer = 120
+    elif battle_after_messages == "end_loss":
+        game_state = "battle_end"
+        battle_result_timer = 120
+    else:
+        battle_phase = battle_after_messages
 
 
 def draw_text(text, x, y, use_big_font=False, color=TEXT_COLOR):
@@ -215,10 +335,10 @@ menu_choice = play_title_menu(
 )
 
 if menu_choice == "new_game":
+    play_welcome_video(screen, game_surface, font)
     game_state = "starter_select"
 elif menu_choice == "continue":
     game_state = "starter_select"
-
 
 
 # Main game loop
@@ -250,66 +370,85 @@ while running:
 
         elif game_state == "battle":
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_a:
-                    damage = player_creature.attack_damage()
-                    enemy_creature.hp = max(0, enemy_creature.hp - damage)
-                    
-                    attack_attacker = "player"
-                    attack_timer = 10
 
-                    move_effect = "flamethrower"
-                    move_effect_timer = 18
+                if battle_phase == "message":
+                    if event.key == pygame.K_RETURN:
+                        advance_battle_messages()
 
-                    #move_effect = "thunderbolt"
-                    #move_effect_timer = 8
+                elif battle_phase == "action_menu":
+                    if event.key == pygame.K_LEFT and battle_menu_index in [1, 3]:
+                        battle_menu_index -= 1
+                    elif event.key == pygame.K_RIGHT and battle_menu_index in [0, 2]:
+                        battle_menu_index += 1
+                    elif event.key == pygame.K_UP and battle_menu_index in [2, 3]:
+                        battle_menu_index -= 2
+                    elif event.key == pygame.K_DOWN and battle_menu_index in [0, 1]:
+                        battle_menu_index += 2
 
-                    hit_target = "enemy"
-                    hit_timer = 12
+                    elif event.key == pygame.K_RETURN:
+                        selected_action = battle_menu_options[battle_menu_index]
 
-                    if enemy_creature.is_fainted():
-                        battle_message = f"You defeated {enemy_creature.name}!"
-                        game_state = "battle_end"
-                        battle_result_timer = 120
-                    else:
-                        battle_message = f"{player_creature.name} attacks for {damage} damage!"
-                        result = enemy_turn(
-                            enemy_creature,
-                            player_creature,
-                            battle_result_timer,
-                        )
+                        if selected_action == "Attack":
+                            battle_phase = "move_menu"
 
-                        battle_message = result["battle_message"]
-                        hit_target = result["hit_target"]
-                        hit_timer = result["hit_timer"]
-                        attack_attacker = result["attack_attacker"]
-                        attack_timer = result["attack_timer"]
+                        elif selected_action == "Open Bag":
+                            set_battle_messages(["Your bag is empty right now."], "action_menu")
 
-                        if result["game_state"] is not None:
-                            game_state = result["game_state"]
-                            battle_result_timer = result["battle_result_timer"]
+                        elif selected_action == "Throw a Rock":
+                            enemy_creature.hp = max(0, enemy_creature.hp - 1)
+                            set_battle_messages(["You threw a rock! It did 1 damage."], "enemy_turn")
 
-                elif event.key == pygame.K_r:
-                    if random.randint(1, 100) <= 75:
-                        battle_message = "You ran away safely!"
-                        game_state = "battle_end"
-                        battle_result_timer = 60
-                    else:
-                        battle_message = "Could not escape!"
-                        result = enemy_turn(
-                            enemy_creature,
-                            player_creature,
-                            battle_result_timer,
-                        )
+                        elif selected_action == "Run":
+                            if random.randint(1, 100) <= 75:
+                                battle_message = "You ran away safely!"
+                                game_state = "battle_end"
+                                battle_result_timer = 60
+                            else:
+                                set_battle_messages(["Could not escape!"], "enemy_turn")
 
-                        battle_message = result["battle_message"]
-                        hit_target = result["hit_target"]
-                        hit_timer = result["hit_timer"]
-                        attack_attacker = result["attack_attacker"]
-                        attack_timer = result["attack_timer"]
+                elif battle_phase == "move_menu":
+                    if event.key == pygame.K_LEFT and move_menu_index in [1, 3]:
+                        move_menu_index -= 1
+                    elif event.key == pygame.K_RIGHT and move_menu_index in [0, 2]:
+                        move_menu_index += 1
+                    elif event.key == pygame.K_UP and move_menu_index in [2, 3]:
+                        move_menu_index -= 2
+                    elif event.key == pygame.K_DOWN and move_menu_index in [0, 1]:
+                        move_menu_index += 2
+                    elif event.key == pygame.K_ESCAPE:
+                        battle_phase = "action_menu"
 
-                        if result["game_state"] is not None:
-                            game_state = result["game_state"]
-                            battle_result_timer = result["battle_result_timer"]
+                    elif event.key == pygame.K_RETURN:
+                        move = player_creature.moves[move_menu_index]
+                        damage, multiplier = calculate_move_damage(player_creature, enemy_creature, move)
+                        enemy_creature.hp = max(0, enemy_creature.hp - damage)
+
+                        attack_attacker = "player"
+                        attack_timer = 10
+
+                        move_effect = move.animation
+                        if move.animation == "flamethrower":
+                            move_effect_timer = 18
+                        elif move.animation == "thunderbolt":
+                            move_effect_timer = 8
+                        else:
+                            move_effect_timer = 0
+
+                        hit_target = "enemy"
+                        hit_timer = 12
+
+                        messages = [f"{player_creature.name} used {move.name}!"]
+
+                        if multiplier > 1.0:
+                            messages.append("It's super effective!")
+                        elif multiplier < 1.0:
+                            messages.append("It's not very effective...")
+
+                        if enemy_creature.is_fainted():
+                            messages.append(f"You defeated {enemy_creature.name}!")
+                            set_battle_messages(messages, "end_win")
+                        else:
+                            set_battle_messages(messages, "enemy_turn")
 
     if game_state == "starter_select":
         draw_starter_screen()
@@ -376,6 +515,8 @@ while running:
         )
 
     elif game_state == "battle":
+        current_battle_message = battle_messages[0] if battle_messages else battle_message
+        
         draw_battle_screen(
             game_surface,
             battle_bg,
@@ -391,6 +532,11 @@ while running:
             get_bounce_offset,
             draw_text,
             draw_hp_bar,
+            battle_phase,
+            current_battle_message,
+            battle_menu_options,
+            battle_menu_index,
+            move_menu_index,
         )
 
     elif game_state == "battle_end":
@@ -409,6 +555,11 @@ while running:
             get_bounce_offset,
             draw_text,
             draw_hp_bar,
+            battle_phase,
+            current_battle_message,
+            battle_menu_options,
+            battle_menu_index,
+            move_menu_index,
         )
 
         battle_result_timer -= 1

@@ -3,6 +3,29 @@ import pygame
 
 from settings import BLACK, BOX_COLOR, WHITE
 
+TYPE_EFFECTIVENESS = {
+    # Super effective
+    ("fire", "grass"): 2.0,
+    ("water", "fire"): 2.0,
+    ("grass", "water"): 2.0,
+    ("electric", "water"): 2.0,
+
+    # Not very effective
+    ("water", "grass"): 0.5,
+    ("fire", "water"): 0.5,
+    ("grass", "fire"): 0.5,
+}
+
+def get_type_multiplier(move_type, defender_type):
+    return TYPE_EFFECTIVENESS.get((move_type, defender_type), 1.0)
+
+
+def calculate_move_damage(attacker, defender, move):
+    base_damage = attacker.attack_damage(move.power)
+    multiplier = get_type_multiplier(move.move_type, defender.creature_type)
+    final_damage = int(base_damage * multiplier)
+    return max(1, final_damage), multiplier
+
 
 def draw_flamethrower(game_surface, start_x, start_y, end_x, end_y, progress):
     steps = 12
@@ -57,6 +80,11 @@ def draw_battle_screen(
     get_bounce_offset,
     draw_text,
     draw_hp_bar,
+    battle_phase,
+    current_battle_message,
+    battle_menu_options,
+    battle_menu_index,
+    move_menu_index,
 ):
     game_surface.blit(battle_bg, (0, 0))
 
@@ -105,12 +133,10 @@ def draw_battle_screen(
 
     if move_effect == "flamethrower" and move_effect_timer > 0:
         progress = 1 - (move_effect_timer / 18)
-
         start_x = player_x_pos + 70
         start_y = player_y_pos + 35
         end_x = enemy_x + 30
         end_y = enemy_y + 35
-
         draw_flamethrower(game_surface, start_x, start_y, end_x, end_y, progress)
 
     if move_effect == "thunderbolt" and move_effect_timer > 0:
@@ -118,7 +144,6 @@ def draw_battle_screen(
         start_y = player_y_pos + 35
         end_x = enemy_x + 30
         end_y = enemy_y + 35
-
         draw_thunderbolt(game_surface, start_x, start_y, end_x, end_y)
 
     draw_text(player_creature.name, 70, 210)
@@ -128,8 +153,26 @@ def draw_battle_screen(
     pygame.draw.rect(game_surface, BOX_COLOR, (40, 430, 720, 130))
     pygame.draw.rect(game_surface, BLACK, (40, 430, 720, 130), 2)
 
-    draw_text(battle_message, 60, 455)
-    draw_text("Press A = Attack    Press R = Run", 60, 500)
+    if battle_phase == "message":
+        draw_text(current_battle_message, 60, 455)
+        if pygame.time.get_ticks() // 300 % 2 == 0:
+            draw_text("v", 720, 505)
+
+    elif battle_phase == "action_menu":
+        positions = [(70, 455), (380, 455), (70, 500), (380, 500)]
+
+        for i, option in enumerate(battle_menu_options):
+            prefix = ">" if i == battle_menu_index else " "
+            x, y = positions[i]
+            draw_text(f"{prefix} {option}", x, y)
+
+    elif battle_phase == "move_menu":
+        positions = [(70, 455), (380, 455), (70, 500), (380, 500)]
+
+        for i, move in enumerate(player_creature.moves):
+            prefix = ">" if i == move_menu_index else " "
+            x, y = positions[i]
+            draw_text(f"{prefix} {move.name}", x, y)
 
 
 def enemy_turn(
@@ -137,7 +180,8 @@ def enemy_turn(
     player_creature,
     battle_result_timer,
 ):
-    damage = enemy_creature.attack_damage()
+    move = random.choice(enemy_creature.moves)
+    damage, multiplier = calculate_move_damage(enemy_creature, player_creature, move)
     player_creature.hp = max(0, player_creature.hp - damage)
 
     attack_attacker = "enemy"
@@ -146,7 +190,16 @@ def enemy_turn(
     hit_target = "player"
     hit_timer = 12
 
-    battle_message = f"{enemy_creature.name} attacks for {damage} damage!"
+    battle_message = f"{enemy_creature.name} used {move.name}!"
+
+    if multiplier > 1.0:
+        battle_message += " It's super effective!"
+    elif multiplier < 1.0:
+        battle_message += " It's not very effective..."
+
+    move_effect = move.animation
+    move_effect_timer = 18 if move.animation == "flamethrower" else 8 if move.animation == "thunderbolt" else 0
+
     game_state = None
 
     if player_creature.is_fainted():
@@ -162,4 +215,6 @@ def enemy_turn(
         "hit_timer": hit_timer,
         "attack_attacker": attack_attacker,
         "attack_timer": attack_timer,
+        "move_effect": move_effect,
+        "move_effect_timer": move_effect_timer,
     }
