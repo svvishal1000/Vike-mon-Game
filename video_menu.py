@@ -3,6 +3,7 @@ import math
 import pygame
 import sys
 
+from utils.ui import draw_story_dialogue_box
 from settings import WIDTH, HEIGHT, WHITE, BLACK, BOX_COLOR
 from utils.helpers import load_sprite
 
@@ -117,45 +118,53 @@ def play_welcome_video(screen, game_surface, font):
 
     while True:
         arrow_timer += 1
+        TEXT_SPEED = 1  # smaller = faster
+
         text_timer += 1
 
-        if displayed_length < len(full_text) and text_timer % 3 == 0:
-            displayed_length += 1
+        TEXT_SPEED = 1
+        CHARS_PER_FRAME = 5   # 👈 increase this
+
+        text_timer += 1
+
+        if displayed_length < len(full_text) and text_timer >= TEXT_SPEED:
+            displayed_length += CHARS_PER_FRAME
+            text_timer = 0
+
+        # prevent overflow
+        displayed_length = min(displayed_length, len(full_text))
 
         current_text = full_text[:displayed_length]
 
+        # draw last video frame onto game surface
         game_surface.blit(last_frame_surface, (0, 0))
 
-        # Dialogue box drawn directly on screen (not game_surface)
-        pygame.draw.rect(screen, BOX_COLOR, (40, 430, 720, 130))
-        pygame.draw.rect(screen, BLACK, (40, 430, 720, 130), 2)
+        # stretch video to fullscreen
+        screen_width, screen_height = screen.get_size()
+        scaled_surface = pygame.transform.scale(game_surface, (screen_width, screen_height))
 
-        dialogue_text = font.render(current_text, True, BLACK)
-        screen.blit(dialogue_text, (70, 465))
+        # draw fullscreen video first
+        screen.blit(scaled_surface, (0, 0))
 
-        # Arrow appears only after full text
-        if displayed_length == len(full_text):
-            if (arrow_timer // 20) % 2 == 0:
-                arrow_text = font.render("v", True, BLACK)
-                screen.blit(arrow_text, (720, 505))
+        # NOW draw dialogue UI directly on screen so it does not stretch
+        show_arrow = displayed_length == len(full_text) and (arrow_timer // 20) % 2 == 0
+        draw_story_dialogue_box(screen, font, current_text, show_arrow)
 
-            screen_width, screen_height = screen.get_size()
+        pygame.display.update()
 
-            scaled_surface = pygame.transform.scale(game_surface, (screen_width, screen_height))
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
 
-            screen.blit(scaled_surface, (0, 0))
-            pygame.display.update()
-
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
-
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_RETURN:
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_RETURN:
+                    if displayed_length < len(full_text):
+                        displayed_length = len(full_text)
+                    else:
                         return
 
-            pygame.time.delay(30)
+        pygame.time.delay(30)
 
 
 def play_title_menu(

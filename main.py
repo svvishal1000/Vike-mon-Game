@@ -39,6 +39,14 @@ game_surface = pygame.Surface((WIDTH, HEIGHT))
 
 player_size = 30
 
+# Load images
+title_logo = load_sprite("title_logo.png", 500, 200)
+
+battle_bg = pygame.image.load("assets/battle_bg.png").convert()
+battle_bg = pygame.transform.scale(battle_bg, (WIDTH, HEIGHT))
+
+# ⭐ ADD THIS RIGHT BELOW
+starter_bg = pygame.image.load("assets/starter_bg.png").convert()
 
 
 # Tile and sprite images
@@ -51,7 +59,8 @@ battle_bg = load_sprite("battle_bg.png", WIDTH, HEIGHT)
 
 
 clock = pygame.time.Clock()
-font = pygame.font.SysFont(None, 32)
+font_small = pygame.font.Font("assets/fonts/Orbitron.ttf", 20)
+font_large = pygame.font.Font("assets/fonts/Orbitron.ttf", 40)
 big_font = pygame.font.SysFont(None, 40)
 
 # Colors
@@ -282,44 +291,193 @@ def advance_battle_messages():
 
 
 def draw_text(text, x, y, use_big_font=False, color=TEXT_COLOR):
-    selected_font = big_font if use_big_font else font
+    selected_font = font_large if use_big_font else font_small
     text_surface = selected_font.render(text, True, color)
     game_surface.blit(text_surface, (x, y))
 
 def draw_hp_bar(x, y, current_hp, max_hp, width=200, height=20):
-    pygame.draw.rect(game_surface, BLACK, (x, y, width, height), 2)
+    # Background (light gray)
+    pygame.draw.rect(game_surface, (230, 235, 240), (x, y, width, height), border_radius=8)
 
-    hp_ratio = current_hp / max_hp
+    # Border
+    pygame.draw.rect(game_surface, (40, 40, 50), (x, y, width, height), 2, border_radius=8)
+
+    # HP ratio
+    hp_ratio = max(0, current_hp / max_hp)
+
+    # 🎨 Color logic
+    if hp_ratio > 0.7:
+        hp_color = (80, 220, 120)     # Green
+    elif hp_ratio > 0.3:
+        hp_color = (255, 190, 60)    # Yellow
+    else:
+        hp_color = (220, 70, 70)     # Red
+        # optional glow
+        if pygame.time.get_ticks() // 200 % 2 == 0:
+            hp_color = (255, 90, 90)
+
+    # Inner bar width
     inner_width = int((width - 4) * hp_ratio)
 
-    pygame.draw.rect(game_surface, (0, 200, 0), (x + 2, y + 2, inner_width, height - 4))
+    # Draw HP bar
+    if inner_width > 0:
+        pygame.draw.rect(
+            game_surface,
+            hp_color,
+            (x + 2, y + 2, inner_width, height - 4),
+            border_radius=6
+        )
+
+
+def draw_type_badge(surface, text, center_x, y):
+    type_name = text.lower()
+
+    badge_colors = {
+        "fire": (255, 140, 0),       # orange
+        "water": (70, 130, 255),     # blue
+        "grass": (60, 170, 80),      # green
+        "electric": (240, 200, 0),   # yellow
+        "normal": (150, 150, 150),   # gray
+    }
+
+    bg_color = badge_colors.get(type_name, badge_colors["normal"])
+
+    badge_font = pygame.font.Font("assets/fonts/Orbitron.ttf", 16)
+    text_surface = badge_font.render(text.upper(), True, (255, 255, 255))
+    text_rect = text_surface.get_rect()
+
+    padding_x = 14
+    padding_y = 6
+
+    badge_width = text_rect.width + padding_x * 2
+    badge_height = text_rect.height + padding_y * 2
+
+    badge_rect = pygame.Rect(0, 0, badge_width, badge_height)
+    badge_rect.centerx = center_x
+    badge_rect.y = y
+
+    # solid background
+    pygame.draw.rect(surface, bg_color, badge_rect, border_radius=12)
+
+    # subtle border (slightly darker)
+    darker = tuple(max(0, c - 40) for c in bg_color)
+    pygame.draw.rect(surface, darker, badge_rect, 2, border_radius=12)
+
+    # text
+    text_rect.center = badge_rect.center
+    surface.blit(text_surface, text_rect)
+
 
 def draw_starter_screen():
-    game_surface.fill((230, 230, 255))
+    # background
+    game_surface.blit(starter_bg, (0, 0))
 
-    draw_text("Choose Your Starter", 260, 60, use_big_font=True)
-    draw_text("Use LEFT / RIGHT to choose, ENTER to confirm", 170, 110)
+    # dark overlay so cards/text stand out
+    overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 90))
+    game_surface.blit(overlay, (0, 0))
 
-    start_x = 140
-    gap = 220
+    # colors
+    CARD_BG = (245, 248, 252)
+    CARD_SHADOW = (20, 20, 30, 80)
+    CARD_BORDER = (120, 135, 155)
+    SELECTED_BORDER = (135, 206, 235)
+    SELECTED_GLOW = (180, 225, 245, 90)
+    TITLE_COLOR = (235, 245, 255)
+    TEXT_COLOR_SOFT = (35, 45, 60)
+    SUBTEXT_COLOR = (210, 225, 240)
+
+    # title
+    title = font_large.render("Choose Your Starter", True, TITLE_COLOR)
+    title_rect = title.get_rect(center=(WIDTH // 2, 75))
+    game_surface.blit(title, title_rect)
+
+    subtitle = font_small.render(
+        "Use LEFT / RIGHT to choose, ENTER to confirm",
+        True,
+        SUBTEXT_COLOR
+    )
+    subtitle_rect = subtitle.get_rect(center=(WIDTH // 2, 115))
+    game_surface.blit(subtitle, subtitle_rect)
+
+    # layout
+    card_width = 180
+    card_height = 255
+    gap = 35
+    total_width = len(starter_choices) * card_width + (len(starter_choices) - 1) * gap
+    start_x = (WIDTH - total_width) // 2
+    card_y = 180
 
     for i, creature in enumerate(starter_choices):
-        x = start_x + i * gap
-        y = 250
+        x = start_x + i * (card_width + gap)
+        y = card_y
 
-        border_color = HIGHLIGHT_COLOR if i == selected_starter_index else BLACK
+        selected = (i == selected_starter_index)
+        border_color = SELECTED_BORDER if selected else CARD_BORDER
 
-        pygame.draw.rect(game_surface, WHITE, (x - 40, y - 90, 140, 200))
-        pygame.draw.rect(game_surface, border_color, (x - 40, y - 90, 140, 200), 4)
+        # glow behind selected card
+        if selected:
+            glow = pygame.Surface((card_width + 18, card_height + 18), pygame.SRCALPHA)
+            pygame.draw.rect(glow, SELECTED_GLOW, glow.get_rect(), border_radius=24)
+            game_surface.blit(glow, (x - 9, y - 9))
 
-        preview_image = pygame.transform.scale(creature.image, (70, 70))
-        game_surface.blit(preview_image, (x - 5, y - 35))
+        # shadow
+        shadow = pygame.Surface((card_width, card_height), pygame.SRCALPHA)
+        pygame.draw.rect(shadow, CARD_SHADOW, shadow.get_rect(), border_radius=18)
+        game_surface.blit(shadow, (x + 6, y + 8))
 
-        draw_text(creature.name, x - 10, y + 60)
-        draw_text(f"HP: {creature.max_hp}", x - 10, y + 95)
-        draw_text(f"ATK: {creature.attack_min}-{creature.attack_max}", x - 10, y + 130)
+        # card
+        card_rect = pygame.Rect(x, y, card_width, card_height)
+        pygame.draw.rect(game_surface, CARD_BG, card_rect, border_radius=18)
+        pygame.draw.rect(game_surface, border_color, card_rect, width=4, border_radius=18)
+
+        # creature image with tiny bounce for selected one
+        preview_size = 92 if selected else 82
+        bounce = -4 if selected and (pygame.time.get_ticks() // 180) % 2 == 0 else 0
+        preview_image = pygame.transform.smoothscale(creature.image, (preview_size, preview_size))
+        img_rect = preview_image.get_rect(center=(x + card_width // 2, y + 76 + bounce))
+        game_surface.blit(preview_image, img_rect)
+
+        # text
+        name_surface = font_small.render(creature.name, True, TEXT_COLOR_SOFT)
+        name_rect = name_surface.get_rect(center=(x + card_width // 2, y + 142))
+        game_surface.blit(name_surface, name_rect)
+
+        badge_y = y + 156
+
+        if selected:
+            badge_y -= 2  # slight lift for selected
+
+        draw_type_badge(
+            game_surface,
+            creature.creature_type,
+            x + card_width // 2,
+            badge_y
+        )
+
+        hp_surface = font_small.render(f"HP: {creature.max_hp}", True, TEXT_COLOR_SOFT)
+        hp_rect = hp_surface.get_rect(center=(x + card_width // 2, y + 210))
+        game_surface.blit(hp_surface, hp_rect)
+
+        atk_surface = font_small.render(
+            f"ATK: {creature.attack_min}-{creature.attack_max}",
+            True,
+            TEXT_COLOR_SOFT
+        )
+        atk_rect = atk_surface.get_rect(center=(x + card_width // 2, y + 238))
+        game_surface.blit(atk_surface, atk_rect)
+
+    # bottom help box
+    help_rect = pygame.Rect(WIDTH // 2 - 215, HEIGHT - 76, 430, 48)
+    pygame.draw.rect(game_surface, (225, 240, 248), help_rect, border_radius=14)
+    pygame.draw.rect(game_surface, (135, 206, 235), help_rect, width=3, border_radius=14)
+
+    help_text = font_small.render("Press ENTER to begin your adventure", True, (35, 45, 60))
+    help_text_rect = help_text.get_rect(center=help_rect.center)
+    game_surface.blit(help_text, help_text_rect)
 
 
+# Play intro video once at startup
 play_intro_video(screen, game_surface, pygame.mixer, clock)
 
 menu_choice = play_title_menu(
@@ -328,14 +486,14 @@ menu_choice = play_title_menu(
     pygame.mixer,
     clock,
     title_logo,
-    font,
+    font_small,
     ["New Game", "Continue", "Exit"],
     menu_move_sound,
     menu_select_sound,
 )
 
 if menu_choice == "new_game":
-    play_welcome_video(screen, game_surface, font)
+    play_welcome_video(screen, game_surface, font_large)
     game_state = "starter_select"
 elif menu_choice == "continue":
     game_state = "starter_select"
@@ -532,6 +690,7 @@ while running:
             get_bounce_offset,
             draw_text,
             draw_hp_bar,
+            draw_type_badge,
             battle_phase,
             current_battle_message,
             battle_menu_options,
@@ -555,6 +714,7 @@ while running:
             get_bounce_offset,
             draw_text,
             draw_hp_bar,
+            draw_type_badge,
             battle_phase,
             current_battle_message,
             battle_menu_options,

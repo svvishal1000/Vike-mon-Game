@@ -65,6 +65,47 @@ def draw_thunderbolt(game_surface, start_x, start_y, end_x, end_y):
         pygame.draw.lines(game_surface, (255, 255, 200), False, points, 2)
 
 
+def draw_info_panel(surface, x, y, w, h, border_color):
+    panel_rect = pygame.Rect(x, y, w, h)
+
+    # Create gradient surface
+    gradient = pygame.Surface((w, h), pygame.SRCALPHA)
+
+    top_color = (255, 255, 255, 160)   # lighter
+    bottom_color = (240, 245, 250, 140)  # slightly darker
+
+    # Dark-Mode
+    # top_color = (60, 70, 85, 200)
+    # bottom_color = (30, 35, 45, 200)
+
+    for i in range(h):
+        ratio = i / h
+
+        r = int(top_color[0] * (1 - ratio) + bottom_color[0] * ratio)
+        g = int(top_color[1] * (1 - ratio) + bottom_color[1] * ratio)
+        b = int(top_color[2] * (1 - ratio) + bottom_color[2] * ratio)
+        a = int(top_color[3] * (1 - ratio) + bottom_color[3] * ratio)
+
+        pygame.draw.line(gradient, (r, g, b, a), (0, i), (w, i))
+
+    # Rounded mask effect
+    mask = pygame.Surface((w, h), pygame.SRCALPHA)
+    pygame.draw.rect(mask, (255, 255, 255), (0, 0, w, h), border_radius=14)
+    gradient.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+
+    surface.blit(gradient, (x, y))
+
+    # subtle border
+    pygame.draw.rect(surface, border_color, panel_rect, 2, border_radius=14)
+
+    return panel_rect
+
+
+def draw_stat_text(surface, font_obj, text, x, y, color=(35, 45, 60)):
+    text_surface = font_obj.render(text, True, color)
+    surface.blit(text_surface, (x, y))
+
+
 def draw_battle_screen(
     game_surface,
     battle_bg,
@@ -80,12 +121,15 @@ def draw_battle_screen(
     get_bounce_offset,
     draw_text,
     draw_hp_bar,
+    draw_type_badge,   # 👈 ADD THIS
     battle_phase,
     current_battle_message,
     battle_menu_options,
     battle_menu_index,
     move_menu_index,
 ):
+
+
     game_surface.blit(battle_bg, (0, 0))
 
     enemy_bounce = get_bounce_offset(speed=0.008, amount=10, phase=0)
@@ -121,9 +165,46 @@ def draw_battle_screen(
     pygame.draw.ellipse(game_surface, (50, 50, 50), (enemy_x + 18, enemy_y + 72, 60, 20))
     game_surface.blit(enemy_creature.image, (enemy_x, enemy_y))
 
-    draw_text(enemy_creature.name, 470, 80)
-    draw_text(f"HP: {enemy_creature.hp}/{enemy_creature.max_hp}", 470, 110)
-    draw_hp_bar(470, 140, enemy_creature.hp, enemy_creature.max_hp)
+    name_font = pygame.font.Font("assets/fonts/Orbitron.ttf", 20)
+    stat_font = pygame.font.Font("assets/fonts/Orbitron.ttf", 16)
+
+    enemy_panel = draw_info_panel(game_surface, 440, 58, 235, 100, (135, 206, 235))
+
+    # Name (left)
+    draw_stat_text(
+        game_surface,
+        name_font,
+        enemy_creature.name,
+        enemy_panel.x + 12,
+        enemy_panel.y + 10
+    )
+
+    # Type badge (right side of name)
+    draw_type_badge(
+        game_surface,
+        enemy_creature.creature_type,
+        enemy_panel.x + 170,
+        enemy_panel.y + 10
+    )
+
+    # HP bar (left bottom)
+    draw_hp_bar(
+        enemy_panel.x + 12,
+        enemy_panel.y + 60,
+        enemy_creature.hp,
+        enemy_creature.max_hp,
+        width=140,
+        height=14
+    )
+
+    # HP text (right of bar)
+    draw_stat_text(
+        game_surface,
+        stat_font,
+        f"{enemy_creature.hp}/{enemy_creature.max_hp}",
+        enemy_panel.x + 160,
+        enemy_panel.y + 58
+    )
 
     player_x_pos = 180 + player_shake_x + player_attack_x
     player_y_pos = 330 + player_bounce + player_shake_y
@@ -146,9 +227,43 @@ def draw_battle_screen(
         end_y = enemy_y + 35
         draw_thunderbolt(game_surface, start_x, start_y, end_x, end_y)
 
-    draw_text(player_creature.name, 70, 210)
-    draw_text(f"HP: {player_creature.hp}/{player_creature.max_hp}", 70, 240)
-    draw_hp_bar(70, 270, player_creature.hp, player_creature.max_hp)
+    player_panel = draw_info_panel(game_surface, 48, 198, 235, 100, (135, 206, 235))
+
+    # Name
+    draw_stat_text(
+        game_surface,
+        name_font,
+        player_creature.name,
+        player_panel.x + 12,
+        player_panel.y + 10
+    )
+
+    # Type badge
+    draw_type_badge(
+        game_surface,
+        player_creature.creature_type,
+        player_panel.x + 170,
+        player_panel.y + 10
+    )
+
+    # HP bar
+    draw_hp_bar(
+        player_panel.x + 12,
+        player_panel.y + 60,
+        player_creature.hp,
+        player_creature.max_hp,
+        width=140,
+        height=14
+    )
+
+    # HP text
+    draw_stat_text(
+        game_surface,
+        stat_font,
+        f"{player_creature.hp}/{player_creature.max_hp}",
+        player_panel.x + 160,
+        player_panel.y + 58
+    )
 
     pygame.draw.rect(game_surface, BOX_COLOR, (40, 430, 720, 130))
     pygame.draw.rect(game_surface, BLACK, (40, 430, 720, 130), 2)
